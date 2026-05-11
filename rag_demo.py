@@ -5,6 +5,7 @@ import asyncio
 import pymilvus
 
 from pathlib import Path
+from tavily import TavilyClient
 from dataclasses import dataclass
 from pymilvus import MilvusClient
 from pydantic_ai import Agent, RunContext
@@ -21,6 +22,7 @@ DEFAULT_MILVUS_URI = str(PROJECT_ROOT / "pdai.db")
 class MyDeps:
     ollama_client: ollama.Client
     milvus_client: MilvusClient
+    tavily_client: TavilyClient
 
 rag_agent = Agent(
     model=OllamaModel(
@@ -40,6 +42,7 @@ rag_agent = Agent(
 async def retrieve(ctx: RunContext[MyDeps], search_query: str) -> str:
     """
     Milvus VDB에서 문서 검색 수행
+    Software Engineering에 관한 문서만 가지고 있다.
 
     Args:
         ctx: 호출 시 context.
@@ -61,13 +64,34 @@ async def retrieve(ctx: RunContext[MyDeps], search_query: str) -> str:
         for i, hit in enumerate(retrieve_results[0])
     )
 
+@rag_agent.tool
+async def search(ctx: RunContext[MyDeps], search_query: str) -> str:
+    """
+    일반적인 정보를 검색하기 위함
+    WEB에서 관련 정보를 검색 (tavily API 사용)
+
+    Args:
+        ctx: 호출 시 context.
+        search_query: 문서 검색어
+    """
+    response = ctx.deps.tavily_client.search(search_query)
+    print("search response", response)
+    return "\n\n".join(
+        f"# Document {i+1}\nTitle: {hit['title']}\n{hit['content']}"
+        for i, hit in enumerate(response.get("results"))
+    )
+
 
 async def run_agent():
     milvus_client = MilvusClient(DEFAULT_MILVUS_URI)
     ollama_client = ollama.Client(host=DEFAULT_OLLAMA_HOST)
+    tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY", ""))
 
-    deps = MyDeps(ollama_client=ollama_client, milvus_client=milvus_client)
-    result = await rag_agent.run("버전관리는 왜 중요한가?", deps=deps)
+    deps = MyDeps(ollama_client=ollama_client, 
+                  milvus_client=milvus_client,
+                  tavily_client=tavily_client
+                  )
+    result = await rag_agent.run("도널드 트럼프는 누구인가?", deps=deps)
 
     return result
 
