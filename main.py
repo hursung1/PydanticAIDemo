@@ -21,14 +21,15 @@ async def main():
     deps = MyDeps(
         milvus_client=milvus_client,
         ollama_client=ollama_client,
-        tavily_client=tavily_client
+        tavily_client=tavily_client,
+        documents=""
     )
 
-    agent_out = await rag_agent.run("I need a description about Osaka.", deps=deps)
-    
-    return agent_out.output
+    rag_result = await rag_agent.run("소프트웨어 버전관리는 어떻게 해야됨?", deps=deps)
+    return rag_result.output
 
 
 if __name__ == "__main__":
     result = asyncio.run(main())
-    print(result)
+    print(f"used_tool: {result.used_tool}")
+    print(f"output: {result.agent_answer}")

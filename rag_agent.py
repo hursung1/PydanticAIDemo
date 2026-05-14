@@ -2,6 +2,7 @@ import os
 import ollama
 
 from tavily import TavilyClient
+from typing import List, Literal
 from dataclasses import dataclass
 from pymilvus import MilvusClient
 from pydantic_ai import Agent, RunContext
@@ -18,7 +19,7 @@ class MyDeps:
 
 @dataclass
 class OutputType:
-    used_tool: str
+    used_tool: List[str]
     agent_answer: str
 
 llm = OllamaModel(
@@ -33,7 +34,7 @@ rag_agent = Agent(
     model=llm,
     deps_type=MyDeps,
     output_type=OutputType,
-    system_prompt="찾은 문서 내용을 이용하여 사용자에게 친절하고 소상히 답변한다. 만약 주어진 문서가 없거나, 주어졌더라도 답을 찾을 수 없다면 '모른다' 라고 대답하라. 또, 검색에 사용했던 tool을 답변으로 함께 제공해야 한다."
+    system_prompt="사용자에게 친절하고 소상히 답변한다. 만약 근거로 할 수 있는 정보가 주어지지 않았다면 '모른다' 라고 대답하라. 또, 사용했던 tool을 답변으로 함께 제공해야 한다."
 )
 
 # @rag_agent.system_prompt
@@ -42,7 +43,7 @@ rag_agent = Agent(
 
 @rag_agent.instructions
 async def instruction() -> str:
-    return ""
+    return "사용자의 요청을 파악하여, 적절한 tool을 사용해 요청을 처리한다."
 
 @rag_agent.tool
 async def retrieve(ctx: RunContext[MyDeps], search_query: str) -> str:
@@ -63,10 +64,13 @@ async def retrieve(ctx: RunContext[MyDeps], search_query: str) -> str:
         output_fields=["text"]
     )
 
-    return "\n\n".join(
+    doc_content = "\n\n".join(
         f"# Document {i+1}\n{hit["entity"]["text"]}"
         for i, hit in enumerate(retrieve_results[0])
     )
+
+    return doc_content
+
 
 @rag_agent.tool
 async def search(ctx: RunContext[MyDeps], search_query: str) -> str:
@@ -79,8 +83,30 @@ async def search(ctx: RunContext[MyDeps], search_query: str) -> str:
         search_query: 문서 검색어
     """
     response = ctx.deps.tavily_client.search(search_query)
-    print("search response", response)
-    return "\n\n".join(
+
+    doc_content = "\n\n".join(
         f"# Document {i+1}\nTitle: {hit['title']}\n{hit['content']}"
         for i, hit in enumerate(response.get("results"))
     )
+
+    return doc_content
+
+
+@rag_agent.tool
+async def calculator(ctx: RunContext[MyDeps], operator: Literal["+", "-", "*", "/"], operand1: float, operand2: float) -> float:
+    """
+    계산기
+
+    Args
+        operator: 사칙 연산자 ("+", "-", "*", "/")
+        operand1, operand2: 연산 대상 수
+    """
+
+    if operator == "+":
+        return operand1 + operand2
+    elif operator == "-":
+        return operand1 - operand2
+    elif operator == "*":
+        return operand1 * operand2
+    elif operator == "/":
+        return operand1 / operand2
