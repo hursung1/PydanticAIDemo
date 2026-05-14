@@ -1,39 +1,34 @@
 import os
+import ollama
+import asyncio
 import logfire
 import langchain
+import rag_agent
 
-from pydantic import BaseModel
-from pydantic_ai import Agent
-from pydantic_ai.models.ollama import OllamaModel
-from pydantic_ai.providers.ollama import OllamaProvider
-from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_ollama import ChatOllama
+from tavily import TavilyClient
+from pymilvus import MilvusClient
 
-class CityLocation(BaseModel):
-    city: str
-    country: str
+from variables import DEFAULT_MILVUS_URI, DEFAULT_OLLAMA_HOST
 
 os.environ["LANGSMITH_TRACING"] = "true"
 # logfire.configure()
 # logfire.instrument_pydantic_ai()
 
-llm = OllamaModel(
-    "gpt-oss:120b-cloud", 
-    provider=OllamaProvider(
-        base_url="https://ollama.com/v1",
-        api_key=os.environ["OLLAMA_API_KEY"]
-        )
+async def main():
+    milvus_client = MilvusClient(DEFAULT_MILVUS_URI)
+    ollama_client = ollama.Client(host=DEFAULT_OLLAMA_HOST)
+    tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY", ""))
+
+    deps = rag_agent.MyDeps(
+        milvus_client=milvus_client,
+        ollama_client=ollama_client,
+        tavily_client=tavily_client
     )
 
-agent = Agent(
-    model=llm, 
-    output_type=CityLocation,
-    instructions="Answer precisely.")
-
-def main():
-    agent_out = agent.run_sync("I need a description about Osaka.")
-    print(agent_out)
-
+    agent_out = await rag_agent.rag_agent.run("I need a description about Osaka.", deps=deps)
+    
+    return agent_out.output
 
 if __name__ == "__main__":
-    main()
+    result = asyncio.run(main())
+    print(result)
